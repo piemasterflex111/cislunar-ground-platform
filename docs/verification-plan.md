@@ -8,4 +8,4 @@ Verification is evidence-driven:
 4. `scripts/smoke_test.sh` verifies deployed telemetry, dry-run commands, live command dispatch, spacecraft acknowledgement, alerts, and metrics.
 5. CI runs static checks, unit tests, traceability, container build, and the Compose smoke test.
 
-Artifacts should be captured from CI logs or redirected into an `artifacts/<timestamp>/` directory for interview evidence.
+Artifacts should be captured from CI logs or redirected into an `artifacts/<timestamp>/` directory for verification records.

@@ -1,6 +1,6 @@
 # Secure Payload Command and Telemetry Gateway
 
-## Current learning status: Phase 2 telemetry path
+## Current status: Phase 2 telemetry path
 
 The active build is deliberately narrow: one simulated payload sends one fixed
 binary telemetry format through a third-party vendor simulator into a ground
@@ -221,6 +221,6 @@ Legacy material remains available here:
 | [`observability/`](observability/) | Retained Prometheus and Grafana configuration; not started in Phase 2 |
 | [`requirements/`](requirements/) | Earlier traceability material; it must not be cited as Phase 2 evidence without being remapped |
 
-Do not use a legacy component as interview evidence for the active gateway until
+Do not use a legacy component as evidence for the active gateway until
 you have personally run it, tested it against a current requirement, and can
 explain its boundary and failure behavior.

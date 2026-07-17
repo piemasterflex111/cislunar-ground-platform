@@ -6,6 +6,8 @@ learning_path.md
 first_principles_execution_guide.md
 FIRST_PRINCIPLES_EXECUTION_GUIDE.md
 LEARNING_PATH.md
+LEARNING_LOG.md
+STATUS_SUMMARY.md
 .mypy_cache/
 .ruff_cache/
 *.pyc

@@ -463,7 +463,7 @@ A gap proves the ground dataset did not observe one or more sequence values. It 
 POST /commands HTTP/1.1
 Host: ground-api:8444
 Authorization: Bearer <local-operator-or-administrator-token>
-Idempotency-Key: interview-demo-0001
+Idempotency-Key: example-0001
 Content-Type: application/json
 ~~~
 

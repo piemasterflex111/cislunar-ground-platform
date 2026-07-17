@@ -22,7 +22,7 @@ usermod -aG docker ubuntu
 
 # Clone the repository
 cd /home/ubuntu
-git clone https://github.com/payam-adloo/cislunar-ground-platform.git 2>/dev/null || \
+git clone https://github.com/piemasterflex111/cislunar-ground-platform.git 2>/dev/null || \
   echo "Clone failed — will be pushed manually"
 cd cislunar-ground-platform || mkdir cislunar-ground-platform
 

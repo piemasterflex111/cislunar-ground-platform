@@ -89,7 +89,7 @@ tests/
 ### 3.1 Permanent Sequence
 
 ```
-Requirement → Implementation → Verification → Evidence → Documentation → LinkedIn → Interview reuse
+Requirement → Implementation → Verification → Evidence → Documentation
 ```
 
 Sequence is **STRICT**: each stage gates the next. Engineering result must exist
@@ -112,7 +112,7 @@ pipeline stages, the corresponding test must exist and pass.
 — Phase 2, Requirement 12, Claim 8 — claim 8 for requirement 12 has been prepared
 as a gap indicator (software engineering foundation, project authoring skill).
 
-**LinkedIn rule:** Only prepare claims for verified items. Skip unverified slices even
+**Public sharing rule:** Only describe verified items. Skip unverified slices even
 if the distinction trivially obvious to the project author.
 
 ---
@@ -343,7 +343,7 @@ and embedded operational assumptions.
 | Phase 2 tests before verification | ❌ — 0/85 Phase 2 tests exist |
 | No claim for unverified item | ✅ — no claims prepared for Phase 2 |
 | Evidence verification Trail | ✅ — evidence/p2/ is being built |
-| GitHub portfolio hygiene | ✅ — clean commit history |
+| Repository hygiene | ✅ — clean commit history |
 
 ---
 
