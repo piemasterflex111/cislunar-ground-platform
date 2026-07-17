@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: telemetry-ingest, namespace: ground-platform}
+spec:
+  replicas: 1
+  strategy: {type: RollingUpdate, rollingUpdate: {maxUnavailable: 0, maxSurge: 1}}
+  selector: {matchLabels: {app: telemetry-ingest}}
+  template:
+    metadata: {labels: {app: telemetry-ingest}}
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm: {labelSelector: {matchLabels: {app: telemetry-ingest}}, topologyKey: kubernetes.io/hostname}
+      containers:
+        - name: app
+          image: ghcr.io/OWNER/cislunar-ground-platform:latest
+          command: ["python", "-m", "mission_ground.services.telemetry_ingest"]
+          envFrom: [{configMapRef: {name: ground-config}}]
+          ports: [{name: telemetry, containerPort: 5005, protocol: UDP}, {name: metrics, containerPort: 9102}]
+          readinessProbe: {tcpSocket: {port: metrics}, initialDelaySeconds: 3, periodSeconds: 5}
+          livenessProbe: {tcpSocket: {port: metrics}, initialDelaySeconds: 10, periodSeconds: 10}
+          resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: "1", memory: 512Mi}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: telemetry-ingest, namespace: ground-platform}
+spec: {selector: {app: telemetry-ingest}, ports: [{name: telemetry, port: 5005, protocol: UDP}, {name: metrics, port: 9102}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: telemetry-processor, namespace: ground-platform}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: telemetry-processor}}
+  template:
+    metadata: {labels: {app: telemetry-processor}}
+    spec:
+      containers:
+        - name: app
+          image: ghcr.io/OWNER/cislunar-ground-platform:latest
+          command: ["python", "-m", "mission_ground.services.telemetry_processor"]
+          envFrom: [{configMapRef: {name: ground-config}}]
+          ports: [{name: metrics, containerPort: 9103}]
+          readinessProbe: {tcpSocket: {port: metrics}, initialDelaySeconds: 3, periodSeconds: 5}
+          resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: "1", memory: 512Mi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: mission-api, namespace: ground-platform}
+spec:
+  replicas: 2
+  strategy: {type: RollingUpdate, rollingUpdate: {maxUnavailable: 0, maxSurge: 1}}
+  selector: {matchLabels: {app: mission-api}}
+  template:
+    metadata: {labels: {app: mission-api}}
+    spec:
+      containers:
+        - name: app
+          image: ghcr.io/OWNER/cislunar-ground-platform:latest
+          command: ["uvicorn", "mission_ground.services.mission_api:app", "--host", "0.0.0.0", "--port", "8080"]
+          envFrom: [{configMapRef: {name: ground-config}}, {secretRef: {name: ground-secrets}}]
+          ports: [{name: http, containerPort: 8080}]
+          readinessProbe: {httpGet: {path: /readyz, port: http}, initialDelaySeconds: 5, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, initialDelaySeconds: 10, periodSeconds: 10}
+          resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {cpu: "1", memory: 512Mi}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: mission-api, namespace: ground-platform}
+spec: {selector: {app: mission-api}, ports: [{name: http, port: 8080}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: command-dispatcher, namespace: ground-platform}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: command-dispatcher}}
+  template:
+    metadata: {labels: {app: command-dispatcher}}
+    spec:
+      containers:
+        - name: app
+          image: ghcr.io/OWNER/cislunar-ground-platform:latest
+          command: ["python", "-m", "mission_ground.services.command_dispatcher"]
+          envFrom: [{configMapRef: {name: ground-config}}]
+          ports: [{name: metrics, containerPort: 9104}]
+          readinessProbe: {tcpSocket: {port: metrics}, initialDelaySeconds: 3, periodSeconds: 5}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: spacecraft-sim, namespace: ground-platform}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: spacecraft-sim}}
+  template:
+    metadata: {labels: {app: spacecraft-sim}}
+    spec:
+      containers:
+        - name: app
+          image: ghcr.io/OWNER/cislunar-ground-platform:latest
+          command: ["python", "-m", "mission_ground.services.spacecraft_sim"]
+          envFrom: [{configMapRef: {name: ground-config}}]
+          ports: [{name: command, containerPort: 5006, protocol: UDP}, {name: metrics, containerPort: 9101}]
+          readinessProbe: {tcpSocket: {port: metrics}, initialDelaySeconds: 3, periodSeconds: 5}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: spacecraft-sim, namespace: ground-platform}
+spec: {selector: {app: spacecraft-sim}, ports: [{name: command, port: 5006, protocol: UDP}, {name: metrics, port: 9101}]}

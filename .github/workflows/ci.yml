@@ -1,0 +1,35 @@
+name: ground-platform-ci
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e '.[dev]'
+      - run: ruff check .
+      - run: mypy mission_ground
+      - run: pytest -q
+      - run: python scripts/verify_traceability.py
+      - run: python scripts/perf_packet_codec.py --frames 100000 --minimum-fps 10000
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp .env.example .env
+      - run: docker compose --env-file .env -f deployment/compose.yaml up -d --build
+      - run: ./scripts/smoke_test.sh
+      - if: always()
+        run: docker compose --env-file .env -f deployment/compose.yaml logs --no-color
+      - if: always()
+        run: docker compose --env-file .env -f deployment/compose.yaml down -v

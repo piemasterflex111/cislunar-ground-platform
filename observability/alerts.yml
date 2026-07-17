@@ -1,0 +1,19 @@
+groups:
+  - name: ground-platform
+    rules:
+      - alert: TelemetryStopped
+        expr: rate(ingest_packets_total{result="accepted",apid="health"}[1m]) == 0
+        for: 30s
+        labels: {severity: critical}
+        annotations:
+          summary: "No accepted health telemetry for 30 seconds"
+      - alert: TelemetrySequenceGap
+        expr: increase(ingest_sequence_gaps_total[5m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: "Telemetry sequence gaps detected"
+      - alert: CriticalVehicleLimit
+        expr: increase(processor_alerts_total{severity="CRITICAL"}[1m]) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: "Critical spacecraft limit violation"

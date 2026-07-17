@@ -1,0 +1,17 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "panels": [
+    {"type":"stat","title":"Telemetry frames / sec","targets":[{"expr":"sum(rate(ingest_packets_total{result=\"accepted\",apid=\"health\"}[1m]))"}],"gridPos":{"h":8,"w":8,"x":0,"y":0}},
+    {"type":"timeseries","title":"Bus voltage","targets":[{"expr":"processor_latest_bus_voltage_volts"}],"gridPos":{"h":8,"w":8,"x":8,"y":0}},
+    {"type":"timeseries","title":"Battery temperature","targets":[{"expr":"processor_latest_battery_temperature_celsius"}],"gridPos":{"h":8,"w":8,"x":16,"y":0}},
+    {"type":"timeseries","title":"Sequence gaps","targets":[{"expr":"increase(ingest_sequence_gaps_total[5m])"}],"gridPos":{"h":8,"w":12,"x":0,"y":8}},
+    {"type":"timeseries","title":"Alerts","targets":[{"expr":"sum by (severity) (increase(processor_alerts_total[5m]))"}],"gridPos":{"h":8,"w":12,"x":12,"y":8}}
+  ],
+  "schemaVersion": 41,
+  "tags": ["spacecraft", "ground"],
+  "time": {"from":"now-15m","to":"now"},
+  "title": "Cislunar Ground Overview",
+  "uid": "ground-overview",
+  "version": 1
+}

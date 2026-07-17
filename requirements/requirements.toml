@@ -1,0 +1,55 @@
+[[requirement]]
+id = "GS-001"
+text = "The system shall reject telemetry packets with invalid length or CRC."
+verification = "test"
+test = "tests/test_packet.py::test_crc_corruption_is_rejected"
+doc = "docs/interface-control.md"
+
+[[requirement]]
+id = "GS-002"
+text = "The system shall detect missing telemetry sequence counts including wraparound."
+verification = "test"
+test = "tests/test_sequence.py::test_sequence_gap_and_wraparound"
+doc = "docs/architecture.md"
+
+[[requirement]]
+id = "GS-003"
+text = "The system shall convert binary health telemetry into engineering units."
+verification = "test"
+test = "tests/test_packet.py::test_health_round_trip"
+doc = "docs/interface-control.md"
+
+[[requirement]]
+id = "GS-004"
+text = "The system shall emit deterministic warning and critical limit violations."
+verification = "test"
+test = "tests/test_limits.py::test_critical_health_limits"
+doc = "docs/operations-runbook.md"
+
+[[requirement]]
+id = "GS-005"
+text = "The command path shall reject unsupported commands and out-of-range arguments."
+verification = "test"
+test = "tests/test_commands.py::test_command_allowlist_and_bounds"
+doc = "docs/interface-control.md"
+
+[[requirement]]
+id = "GS-006"
+text = "The command wire format shall detect corruption."
+verification = "test"
+test = "tests/test_packet.py::test_command_crc_corruption_is_rejected"
+doc = "docs/interface-control.md"
+
+[[requirement]]
+id = "GS-007"
+text = "Repeated spacecraft command IDs shall produce the same acknowledgement without reapplying state."
+verification = "test"
+test = "tests/test_simulator.py::test_command_idempotency"
+doc = "docs/architecture.md"
+
+[[requirement]]
+id = "GS-008"
+text = "Every requirement shall reference an existing test and design or operations document."
+verification = "analysis"
+test = "tests/test_traceability.py::test_traceability_manifest"
+doc = "docs/verification-plan.md"

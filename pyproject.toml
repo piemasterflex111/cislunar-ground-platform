@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cislunar-ground-platform"
+version = "0.2.0"
+description = "Learning-focused secure payload command and telemetry gateway"
+requires-python = ">=3.12"
+dependencies = [
+  "asyncpg==0.30.0",
+  "fastapi==0.116.1",
+  "httpx==0.28.1",
+  "prometheus-client==0.22.1",
+  "pydantic==2.11.7",
+  "redis==6.2.0",
+  "sqlalchemy[asyncio]==2.0.41",
+  "uvicorn[standard]==0.35.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "aiosqlite==0.21.0",
+  "mypy==1.17.1",
+  "pytest==8.4.1",
+  "pytest-asyncio==1.1.0",
+  "ruff==0.12.7",
+]
+
+[tool.setuptools.packages.find]
+include = ["mission_ground*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [
+  "grafana_tutorial_git/",
+  "mission_ground/common/",
+  "mission_ground/services/ai_advisor.py",
+  "mission_ground/services/command_dispatcher.py",
+  "mission_ground/services/mission_api.py",
+  "mission_ground/services/spacecraft_sim.py",
+  "mission_ground/services/telemetry_ingest.py",
+  "mission_ground/services/telemetry_processor.py",
+  "scripts/perf_packet_codec.py",
+  "tests/test_packet.py",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_unused_configs = true
+check_untyped_defs = true
+ignore_missing_imports = true
