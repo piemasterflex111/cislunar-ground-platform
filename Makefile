@@ -22,7 +22,7 @@ smoke:
 	./scripts/smoke_test.sh
 
 hiring-demo:
-	./scripts/hiring_demo.sh
+	bash scripts/hiring_demo.sh
 
 perf:
 	python3 scripts/perf_packet_codec.py --frames 100000
