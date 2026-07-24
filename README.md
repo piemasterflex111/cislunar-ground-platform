@@ -1,5 +1,23 @@
 # Secure Payload Command and Telemetry Gateway
 
+## Hiring proof: review the system in three minutes
+
+This project demonstrates one narrow engineering boundary: accept a fixed binary
+telemetry frame, preserve the original bytes, validate the interface, prevent
+duplicate side effects, process durable work, and return an operator-readable
+result.
+
+```bash
+make hiring-demo
+```
+
+The live demonstration proves a nominal packet, byte-for-byte raw preservation,
+an exact duplicate handled idempotently, and a corrupted CRC rejected before
+processing. See [`docs/HIRING_PROOF.md`](docs/HIRING_PROOF.md) for the architecture,
+personal implementation boundary, design decisions, evidence map, and honest
+production gaps.
+
+
 ## Current status: Phase 2 telemetry path
 
 The active build is deliberately narrow: one simulated payload sends one fixed

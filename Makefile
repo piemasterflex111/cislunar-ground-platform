@@ -1,4 +1,4 @@
-.PHONY: test lint typecheck verify up down smoke perf
+.PHONY: test lint typecheck verify up down smoke hiring-demo perf
 
 test:
 	python3 -m pytest -q
@@ -20,6 +20,9 @@ down:
 
 smoke:
 	./scripts/smoke_test.sh
+
+hiring-demo:
+	bash scripts/hiring_demo.sh
 
 perf:
 	python3 scripts/perf_packet_codec.py --frames 100000
