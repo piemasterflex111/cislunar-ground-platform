@@ -1,37 +1,25 @@
 # Secure Payload Command and Telemetry Gateway
 
-## Hiring proof: review the system in three minutes
+A local five-service Python system that receives a fixed binary telemetry frame, preserves the original bytes, validates the interface contract, coordinates durable processing, and returns operator-readable results.
 
-This project demonstrates one narrow engineering boundary: accept a fixed binary
-telemetry frame, preserve the original bytes, validate the interface, prevent
-duplicate side effects, process durable work, and return an operator-readable
-result.
+The active implementation is intentionally narrow. It demonstrates one payload, one 28-byte protocol, one vendor handoff, and one ground-processing path. It is not production flight software.
+
+## End-to-end verification
 
 ```bash
-make hiring-demo
+make verify-demo
 ```
 
-The live demonstration proves a nominal packet, byte-for-byte raw preservation,
-an exact duplicate handled idempotently, and a corrupted CRC rejected before
-processing. See [`docs/HIRING_PROOF.md`](docs/HIRING_PROOF.md) for the architecture,
-personal implementation boundary, design decisions, evidence map, and honest
-production gaps.
+The verification command starts an isolated Docker Compose project on ports `8180` and `8181`, then checks:
 
+- nominal telemetry ingestion and processing;
+- byte-for-byte raw-frame preservation;
+- idempotent handling of an exact duplicate;
+- rejection of a deliberately corrupted CRC before processing.
 
-## Current status: Phase 2 telemetry path
+See [`docs/END_TO_END_VERIFICATION.md`](docs/END_TO_END_VERIFICATION.md) for the architecture, implementation scope, design decisions, verification matrix, and production gaps.
 
-The active build is deliberately narrow: one simulated payload sends one fixed
-binary telemetry format through a third-party vendor simulator into a ground
-gateway. The gateway authenticates the vendor, preserves the received bytes,
-validates the packet, queues accepted work, and lets a separate worker store an
-operator-readable health result.
-
-The command path is not active yet. Transport Layer Security (TLS), mutual TLS
-(mTLS), certificate identity, and production secret handling are also deferred.
-This repository is a local learning demonstration, not production-ready ground
-software and not flight software.
-
-## Architecture in plain language
+## Architecture
 
 ```text
 logical payload inside vendor-simulator
@@ -43,34 +31,25 @@ logical payload inside vendor-simulator
           | local HTTP + vendor teaching token
           v
       ground-api ----------> PostgreSQL
-          |                  exact raw bytes and receipt evidence
+          |                  raw bytes, receipt evidence, durable state
           |
-          | saved record identifier
+          | saved job identifier
           v
         Redis
           |
           v
    payload-worker ---------> PostgreSQL
-                             engineering values and health classification
+                             decoded values and health classification
                                       |
                                       v
                       operator retrieves through ground-api
 ```
 
-Hypertext Transfer Protocol (HTTP) is the request-and-response protocol used by
-the local web interfaces. An Application Programming Interface (API) is a
-defined doorway through which one program requests data or an action from
-another. The APIs make the vendor handoff and operator retrieval visible and
-testable.
+PostgreSQL is the permanent evidence store. Redis coordinates waiting work but does not hold the only copy of telemetry. Saving before queueing means a temporary queue or worker failure cannot erase the original vendor delivery.
 
-PostgreSQL is the permanent evidence store. Redis is the waiting line; it holds
-a reference to saved work, not the only copy of mission data. Saving before
-queueing means a temporary queue or worker failure cannot erase the original
-vendor delivery.
+## Active services
 
-The five active services are:
-
-| Service | One responsibility |
+| Service | Responsibility |
 |---|---|
 | `vendor-simulator` | Create a payload frame and forward its exact bytes |
 | `ground-api` | Authenticate, preserve, validate, queue, and retrieve telemetry |
@@ -78,16 +57,28 @@ The five active services are:
 | `postgres` | Preserve raw, processed, sequence, job, and audit evidence |
 | `redis` | Hold processing work until the worker claims it |
 
-Idempotent means that repeated delivery of the same logical work cannot create a
-second logical result. It is like checking a work-order number before performing
-the same task again.
+## Interface behavior
 
-## Run Phase 2 locally
+The packet codec implements:
 
-Requirements: Linux, Docker Engine, Docker Compose, `curl`, and Python 3.12 or
-newer.
+- a versioned 28-byte binary frame;
+- explicit big-endian field boundaries;
+- a golden byte vector;
+- CRC-32 integrity validation;
+- payload, boot, sequence, timestamp, temperature, voltage, mode, and fault fields;
+- specific rejection reasons for malformed or unsupported frames.
 
-From this repository:
+Persistent boot and sequence state distinguishes:
+
+- new packets;
+- exact duplicates;
+- conflicting bytes under the same packet identity;
+- sequence gaps;
+- payload restarts.
+
+## Run locally
+
+Requirements: Linux, Docker Engine, Docker Compose, `curl`, and Python 3.12 or newer.
 
 ```bash
 test -f .env || cp .env.example .env
@@ -95,30 +86,24 @@ test -f .env || cp .env.example .env
 ./scripts/smoke_test.sh
 ```
 
-The smoke script uses only `curl`, Bash, and Python's standard library. It:
+The smoke path:
 
 1. confirms gateway readiness and vendor-simulator health;
-2. submits deterministic nominal telemetry through the vendor simulator;
-3. requires downstream status 202, proving this is newly queued work;
-4. retrieves the exact raw record with the operator token;
-5. waits for the worker's processed `NOMINAL` result;
-6. proves the stored raw bytes match the submitted bytes;
-7. corrupts the Cyclic Redundancy Check (CRC); and
-8. requires the gateway to reject that frame with `CRC_MISMATCH`.
+2. submits deterministic nominal telemetry;
+3. requires downstream HTTP 202 for newly queued work;
+4. retrieves the exact raw record;
+5. waits for the worker's `NOMINAL` result;
+6. verifies stored bytes match submitted bytes;
+7. corrupts the CRC;
+8. requires rejection with `CRC_MISMATCH`.
 
-A CRC is a calculated value that detects accidental byte corruption. This
-system needs it to stop a changed frame from entering processing; it is like
-checking a shipment's tamper-evident seal number, and its implementation lives
-under `mission_ground/telemetry/`.
-
-The final line appears only if every check succeeds:
+Expected final line:
 
 ```text
 PASS: Phase 2 telemetry smoke proof
 ```
 
-Run the automated suite with Python 3.12, the version used by the services and
-continuous-integration workflow:
+## Automated checks
 
 ```bash
 python3.12 -m venv .venv312
@@ -128,11 +113,9 @@ python3.12 -m venv .venv312
 .venv312/bin/pytest -q
 ```
 
-The current expected test summary is `146 passed`. A different total is not
-automatically a failure after tests are added or removed; the command's exit
-status and failure report are the authority.
+The verified baseline at the time of this update is `146 passed`. The command exit status remains the authority as tests evolve.
 
-Inspect service state:
+## Service inspection
 
 ```bash
 docker compose --env-file .env -f deployment/compose.yaml ps
@@ -141,104 +124,58 @@ curl -fsS http://127.0.0.1:8080/readyz
 curl -fsS http://127.0.0.1:8081/healthz
 ```
 
-Stop the services while preserving the named data volumes:
+Stop the services while preserving named data volumes:
 
 ```bash
 ./scripts/down.sh
 ```
 
-For the manual send, retrieval, failure, and recovery commands, follow
-[`docs/PHASE_2_TELEMETRY_PATH.md`](docs/PHASE_2_TELEMETRY_PATH.md).
-
-## What Phase 2 is designed to teach
-
-After personally operating this phase, you should be able to explain:
-
-- every field and byte boundary in the telemetry packet;
-- how the vendor is authenticated in this local phase;
-- why checksum validation and authentication solve different problems;
-- why original raw bytes are preserved before processing;
-- why the queue contains a saved record identifier;
-- how the worker converts bytes into engineering values;
-- how one payload health classification is stored idempotently;
-- how boot and sequence identifiers expose duplicates, gaps, and restarts;
-- what remains safe when PostgreSQL, Redis, or the worker is unavailable; and
-- which security controls are still demonstrations or deferred work.
-
 ## Security boundary
 
-Phase 2 uses static environment-based tokens and unencrypted HTTP. Those tokens
-are teaching credentials, not production-grade authentication. The two host
-listeners bind only to `127.0.0.1`; PostgreSQL and Redis publish no host ports;
-and the vendor simulator does not join the internal data network.
+The current phase uses static environment-based teaching tokens and unencrypted local HTTP. These are not production-grade controls.
 
-HTTP does not protect a token or packet from another party able to observe the
-connection. Phase 5 must add Hypertext Transfer Protocol Secure (HTTPS), in
-which HTTP travels inside TLS encryption, and mTLS, in which both machines
-present and verify certificates. Phase 5 must also verify network policy and
-exercise certificate rejection and rotation.
+Current safeguards:
 
-Never commit `.env`, print tokens in logs, or describe these static values as
-production secrets.
+- host listeners bind only to `127.0.0.1`;
+- PostgreSQL and Redis publish no host ports;
+- the vendor simulator does not join the internal data network;
+- `.env` is excluded from version control;
+- raw and processed evidence are separated from queue state.
 
-## Current documents
+Production deployment would require TLS, mutual TLS, certificate identity, rotation, managed secrets, network policy, backup and restore procedures, service-level objectives, migration policy, and security review.
 
-- [`docs/INTERFACE_CONTROL_DOCUMENT.md`](docs/INTERFACE_CONTROL_DOCUMENT.md) —
-  the normative Interface Control Document (ICD) for telemetry, future
-  commands, acknowledgement states, timing, and security boundaries.
-- [`docs/PHASE_2_TELEMETRY_PATH.md`](docs/PHASE_2_TELEMETRY_PATH.md) — the
-  Phase 2 operation, network, failure, and recovery lesson.
+## Documentation
 
-An ICD is the controlled agreement defining exactly what crosses a system
-boundary. It lets payload, vendor, and ground engineers implement independently
-and compare the result against the same bytes and rules.
+- [`docs/INTERFACE_CONTROL_DOCUMENT.md`](docs/INTERFACE_CONTROL_DOCUMENT.md) — normative packet, command, acknowledgement, timing, and security contract.
+- [`docs/PHASE_2_TELEMETRY_PATH.md`](docs/PHASE_2_TELEMETRY_PATH.md) — operation, network, failure, and recovery behavior.
+- [`docs/END_TO_END_VERIFICATION.md`](docs/END_TO_END_VERIFICATION.md) — isolated verification path and design tradeoffs.
 
-## Repository map for the active phase
+## Repository map
 
 ```text
 mission_ground/telemetry/       Packet codec, health rules, sequence rules, storage
 mission_ground/services/        Ground API, payload worker, vendor simulator
-deployment/compose.yaml         Five-service Phase 2 runtime
-tests/                          Domain, storage, queue, service-helper, and simulator tests
-scripts/up.sh                   Build, start, and wait for all services
-scripts/smoke_test.sh           Concise manual telemetry proof
-scripts/down.sh                 Stop while retaining evidence volumes
+deployment/compose.yaml         Five-service runtime
+tests/                          Domain, persistence, queue, service, and simulator tests
+scripts/up.sh                   Build, start, and wait for services
+scripts/smoke_test.sh           Primary telemetry smoke path
+scripts/verify_demo.sh          Isolated nominal, duplicate, and CRC verification
+scripts/down.sh                 Stop services while retaining evidence volumes
 docs/INTERFACE_CONTROL_DOCUMENT.md
 docs/PHASE_2_TELEMETRY_PATH.md
+docs/END_TO_END_VERIFICATION.md
 ```
 
-The focused suite covers domain rules, persistence, queue transitions,
-configuration, metrics, service-boundary helpers, and simulator behavior. The
-live smoke script covers the actual HTTP gateway, PostgreSQL, Redis, worker, and
-simulator together. More exhaustive dependency-outage and retry-injection tests
-belong to the controlled failure phase; do not claim those demonstrations until
-you personally execute them.
+## Retained legacy reference
 
-## Legacy broad-platform reference — not the active runtime
+The repository retains an earlier broad ground-platform prototype for historical comparison. It modeled UDP telemetry, NATS JetStream, a mission API, command dispatch, Prometheus metrics, Grafana dashboards, Kubernetes examples, and an optional local AI advisor.
 
-The repository also retains an earlier, broader ground-platform prototype for
-historical study. It modeled User Datagram Protocol (UDP) telemetry, a NATS
-JetStream message broker, a mission API, command dispatch, Prometheus metrics,
-Grafana dashboards, Kubernetes examples, and an optional local artificial
-intelligence (AI) advisor. UDP sends independent network datagrams without a
-delivery connection; that older design used it to imitate a low-level packet
-link. The active Phase 2 path does not use UDP or NATS.
-
-The earlier packet was inspired by standards from the Consultative Committee
-for Space Data Systems (CCSDS), but it was not a complete CCSDS implementation.
-The current 28-byte project-specific protocol is defined only by the normative
-ICD above and makes no CCSDS-compliance claim.
-
-Legacy material remains available here:
+Those components are not part of the active five-service runtime. The current project-specific 28-byte protocol is defined by the normative interface document and does not claim full CCSDS compliance.
 
 | Retained reference | Status |
 |---|---|
-| `mission_ground/services/spacecraft_sim.py`, `telemetry_ingest.py`, `telemetry_processor.py`, `mission_api.py`, `command_dispatcher.py`, `ai_advisor.py` | Earlier service implementation; not started by current Compose |
-| [`docs/architecture.md`](docs/architecture.md), [`docs/interface-control.md`](docs/interface-control.md), [`docs/operations-runbook.md`](docs/operations-runbook.md), [`docs/verification-plan.md`](docs/verification-plan.md) | Earlier broad-platform documents; not normative for Phase 2 |
-| [`deployment/k8s/`](deployment/k8s/) | Retained Kubernetes deployment reference; explicitly outside the active project scope |
-| [`observability/`](observability/) | Retained Prometheus and Grafana configuration; not started in Phase 2 |
-| [`requirements/`](requirements/) | Earlier traceability material; it must not be cited as Phase 2 evidence without being remapped |
-
-Do not use a legacy component as evidence for the active gateway until
-you have personally run it, tested it against a current requirement, and can
-explain its boundary and failure behavior.
+| `mission_ground/services/spacecraft_sim.py`, `telemetry_ingest.py`, `telemetry_processor.py`, `mission_api.py`, `command_dispatcher.py`, `ai_advisor.py` | Earlier implementation; not started by current Compose |
+| `docs/architecture.md`, `docs/interface-control.md`, `docs/operations-runbook.md`, `docs/verification-plan.md` | Earlier broad-platform documents; not normative for the active phase |
+| `deployment/k8s/` | Historical deployment reference; outside active scope |
+| `observability/` | Retained Prometheus and Grafana configuration; not started in the active phase |
+| `requirements/` | Earlier traceability material; not current evidence unless remapped |
