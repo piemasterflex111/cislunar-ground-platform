@@ -1,0 +1,2 @@
+e178a9e73f1f2b795035e9a9b4e9aa850337e1aa6767358118a618762b165991  mission_ground/common/config.py
+5c7f466b332fd2c80df8ea9dc519acbb360f14b69b1d5b8f8baae4e6d62fd06c  tests/test_telemetry_queue.py
