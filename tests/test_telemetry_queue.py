@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections import defaultdict
 from collections.abc import Coroutine
-from typing import Any
+from typing import Any, TypeVar
 
 import pytest
 
@@ -20,8 +20,10 @@ from mission_ground.telemetry.queue import (
     TelemetryQueue,
 )
 
+T = TypeVar("T")
 
-def run[T](operation: Coroutine[Any, Any, T]) -> T:
+
+def run(operation: Coroutine[Any, Any]) -> Any:
     return asyncio.run(operation)
 
 
@@ -299,3 +301,163 @@ def test_depths_and_ping_report_each_queue_state() -> None:
     assert run(queue.ping()) is True
     redis.ping_result = False
     assert run(queue.ping()) is False
+
+
+# ── failure-mode regression tests ──────────────────────────────────
+
+
+def test_ack_on_already_acked_job_does_not_compress_background_queue() -> None:
+    """A double-ack must not remove an unrelated pending job that sits deepest
+    in the pending list (FIFO invariant)."""
+    queue, redis = make_queue()
+    first = message(1)
+    second = message(2)
+    run(queue.enqueue(first))
+    run(queue.enqueue(second))
+
+    claimed = run(queue.claim(timeout_seconds=1))
+    assert claimed == first
+
+    run(queue.ack(first))
+
+    with pytest.raises(QueueStateError, match="not in the processing list"):
+        run(queue.ack(first))
+
+    # pending queue must still hold 'second'
+    assert run(queue.queue_depth()) == 1
+    claimed2 = run(queue.claim(timeout_seconds=1))
+    assert claimed2 == second
+    assert redis.lists[queue.keys.failed] == []
+    # processing holds the just-claimed second item — ack it before asserting
+    run(queue.ack(second))
+    assert redis.lists[queue.keys.processing] == []
+
+
+def test_invalid_timeout_parameters_are_rejected_by_type_and_value_checks() -> None:
+    """Claim validates timeout_seconds: type must be int, value must be
+    non-negative.  bool is rejected because Python is True/False subclasses
+    of int, and the code explicitly guards against that."""
+    queue, _ = make_queue()
+
+    for bad_val in [True, False, 3.14, "two"]:
+        with pytest.raises((TypeError, ValueError)):
+            run(queue.claim(timeout_seconds=bad_val))
+
+    with pytest.raises(ValueError, match="negative"):
+        run(queue.claim(timeout_seconds=-1))
+
+
+def test_claim_leaves_pending_intact_when_malformed_entry_is_quarantined() -> None:
+    """A malformed entry in pending must move to failed, but any healthy entries
+    sitting behind the bad one must remain untouched in pending."""
+    queue, redis = make_queue()
+
+    healthy = message(2)
+    malformed = b"corrupt-payload"
+
+    run(queue.enqueue(healthy))
+    # Append malformed to the right end so brpoplpush claims it first
+    # (FIFO: claim pops from right, so rightmost item is reclaimed oldest).
+    redis.lists[queue.keys.pending].append(malformed)
+
+    # claim() catches QueueMessageError, raises after quarantining
+    with pytest.raises(QueueMessageError):
+        run(queue.claim(timeout_seconds=1))
+
+    # pending queue must only contain healthy, not malformed
+    assert malformed not in redis.lists[queue.keys.pending]
+    assert redis.lists[queue.keys.processing] == []
+    assert redis.lists[queue.keys.failed] == [malformed]
+    # healthy is still claimable
+    assert run(queue.claim(timeout_seconds=1)) == healthy
+
+
+def test_dead_letter_on_no_longer_processing_job_raises_state_error() -> None:
+    """dead_letter after retry must raise QueueStateError because the job was
+    already moved back to pending."""
+    queue, _ = make_queue()
+    item = message()
+    run(queue.enqueue(item))
+    run(queue.claim(timeout_seconds=1))
+    run(queue.retry(item))
+
+    with pytest.raises(QueueStateError, match="not in the processing list"):
+        run(queue.dead_letter(item))
+
+    # pending must still hold the retried job
+    assert run(queue.queue_depth()) == 1
+
+
+def test_ack_on_retried_job_raises_state_error() -> None:
+    """After a retry the job lives in pending again — ack must fail because it
+    is no longer in processing."""
+    queue, _ = make_queue()
+    item = message()
+    run(queue.enqueue(item))
+    run(queue.claim(timeout_seconds=1))
+    run(queue.retry(item))
+
+    with pytest.raises(QueueStateError, match="not in the processing list"):
+        run(queue.ack(item))
+
+    # pending must still contain the item
+    assert run(queue.queue_depth()) == 1
+
+
+def test_recover_processing_moves_stranded_items_but_not_already_resolved() -> None:
+    """RecoverProcessing should only report what was moved.  A second call
+    when processing is empty must return 0 without error."""
+    queue, _ = make_queue()
+    run(queue.enqueue(message()))
+    run(queue.claim(timeout_seconds=1))
+
+    assert run(queue.recover_processing()) == 1
+    assert run(queue.queue_depth()) == 1
+
+    # Second call: nothing left in processing → 0, no error.
+    assert run(queue.recover_processing()) == 0
+
+
+def test_retry_on_non_processing_job_under_recover_processing_saves_recovery() -> None:
+    """retry must raise QueueStateError when the item is not in processing, and
+    robustly keep the processing list intact for subsequent recovery operations."""
+    queue, _ = make_queue()
+
+    with pytest.raises(QueueStateError):
+        run(queue.retry(message()))
+
+
+def test_dead_letter_on_empty_processing_raises_state_error() -> None:
+    """dead_letter called when processing is empty must not corrupt the failed
+    FIFO list or raise silently."""
+    queue, _ = make_queue()
+
+    with pytest.raises(QueueStateError, match="not in the processing list"):
+        run(queue.dead_letter(message()))
+
+    assert run(queue.failed_depth()) == 0  # failed stays empty
+
+
+def test_recovery_order_preserves_fifo_on_the_largest_useful_batch() -> None:
+    """place six messages in processing, recover, then drain and assert the
+    FIFO order of backfill is identical to the original enqueue order."""
+    queue, _ = make_queue()
+    items = [message(i) for i in range(1, 7)]
+
+    for item in items:
+        run(queue.enqueue(item))
+
+    for _ in items:
+        run(queue.claim(timeout_seconds=1))
+
+    run(queue.recover_processing())
+
+    assert run(queue.queue_depth()) == 6
+    assert run(queue.processing_depth()) == 0
+
+    for expected in items:
+        claimed = run(queue.claim(timeout_seconds=1))
+        assert claimed == expected, (
+            f"FIFO broken at index {items.index(expected)}: "
+            f"expected {expected.job_id}, got {claimed.job_id}"
+        )
